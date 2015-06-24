@@ -88,8 +88,8 @@
                 }
             });
             player.on('firstplay', initialVideoFinished);
-        } else {
-            player.one('playing', initialVideoFinished);
+        }else{
+            initialVideoFinished();
         }
 
 
@@ -240,8 +240,19 @@
                 this.hide();
             }
             this._setValuesLocked(start, end);
-
             this.bar.activatePlay(start, end);
+        },
+        playUntil: function(current, start, end, showRS) {
+            showRS = typeof showRS == 'undefined'?true:showRS;
+            this.player.currentTime(current);
+            this.player.play();
+            if (showRS){
+                this.show();
+            }else{
+                this.hide();
+            }
+            this._setValuesLocked(start,end);
+            this.bar.activatePlay(start,end);
         },
         loop: function (start, end, show) {
             var player = this.player;
@@ -448,6 +459,11 @@
         return this.rangeslider.playBetween(start, end);
     };
 
+//The video will be played in a selected section
+    videojs.Player.prototype.playUntil = function(current, start, end){
+        return this.rangeslider.playUntil(current, start, end);
+    };
+
 //The video will loop between to values
     videojs.Player.prototype.loopBetween = function (start, end) {
         return this.rangeslider.loop(start, end);
@@ -558,13 +574,16 @@
             this.setPosition(0, left);
         else if (this.rs.right.pressed)
             this.setPosition(1, left);
+        else if (this.rs.selectionBar.pressed){
+            this.setBothPosition(left);
+        }
 
         //Fix a problem with the presition in the display time
         var ctd = this.player_.controlBar.currentTimeDisplay;
         ctd.contentEl_.innerHTML = '<span class="vjs-control-text">' + ctd.localize('Current Time') + '</span>' + vjs.formatTime(this.rs._seconds(left), this.player_.duration());
 
         // Trigger slider change
-        if (this.rs.left.pressed || this.rs.right.pressed) {
+        if (this.rs.left.pressed||this.rs.right.pressed||this.rs.selectionBar.pressed) {
             this.rs._triggerSliderChange();
         }
     };
@@ -666,6 +685,38 @@
         return true;
     };
 
+    videojs.SeekRSBar.prototype.setBothPosition = function(pos){
+        var bar = this.rs.bar,
+            offsetLeft = this.rs.selectionBar.offsetLeft,
+            offsetRight = this.rs.selectionBar.offsetRight;
+
+        var left = pos - offsetLeft,
+            right = pos + offsetRight,
+            ObjL = this.rs.left.el_,
+            ObjR = this.rs.right.el_;
+
+        if (left < 0) {
+            left = 0;
+            right = offsetLeft + offsetRight
+        }
+        if (right > 1) {
+            right = 1;
+            left = 1 - offsetLeft - offsetRight;
+        }
+
+        bar.updateLeft(left);
+        bar.updateRight(right);
+
+        ObjL.style.left = (left * 100) + '%';
+        ObjR.style.left = (right * 100) + '%';
+
+        this.rs.start= this.rs._seconds(left);
+        this.rs.end = this.rs._seconds(right);
+
+        return true;
+    };
+
+
     videojs.SeekRSBar.prototype.calculateDistance = function (event) {
         var rstbX = this.getRSTBX();
         var rstbW = this.getRSTBWidth();
@@ -702,6 +753,7 @@
         init: function (player, options) {
             videojs.Component.call(this, player, options);
             this.on('mouseup', this.onMouseUp);
+            this.on('mousedown', this.onMouseDown);
             this.fired = false;
         }
     });
@@ -716,16 +768,36 @@
         });
     };
 
-    videojs.SelectionBar.prototype.onMouseUp = function () {
+    videojs.SelectionBar.prototype.onMouseUp = function (e) {
         var start = this.rs.left.el_.style.left.replace("%", ""),
             end = this.rs.right.el_.style.left.replace("%", ""),
             duration = this.player_.duration(),
             precision = this.rs.updatePrecision,
             segStart = videojs.round(start * duration / 100, precision),
             segEnd = videojs.round(end * duration / 100, precision);
+
         this.player_.currentTime(segStart);
-        this.player_.play();
-        this.rs.bar.activatePlay(segStart, segEnd);
+        this.rs.bar.activatePlay(segStart,segEnd);
+
+        if ($(e.target).closest('.vjs-selectionbar-RS').length){
+            if (!this.rs.selectionBar) this.rs.selectionBar = {};
+            this.rs.selectionBar.pressed = false;
+            return false;
+        }
+    };
+
+    videojs.SelectionBar.prototype.onMouseDown = function(e){
+        if ($(e.target).closest('.vjs-selectionbar-RS').length){
+            var rightVal = this.rs.right.el_.style.left!=''?this.rs.right.el_.style.left:100;
+            var leftVal = this.rs.left.el_.style.left!=''?this.rs.left.el_.style.left:0;
+            var pos = this.rs.box.calculateDistance(e);
+
+            if (!this.rs.selectionBar) this.rs.selectionBar = {};
+
+            this.rs.selectionBar.pressed = true;
+            this.rs.selectionBar.offsetLeft = pos - parseFloat(leftVal) / 100;
+            this.rs.selectionBar.offsetRight = parseFloat(rightVal) / 100 - pos;
+        }
     };
 
     videojs.SelectionBar.prototype.updateLeft = function (left) {
@@ -770,6 +842,7 @@
     videojs.SelectionBar.prototype.suspendPlay = function () {
         this.fired = false;
         this.player_.off("timeupdate", videojs.bind(this, this._processPlay));
+        this.player_.trigger('suspend-play');
     };
 
     videojs.SelectionBar.prototype._processPlay = function () {
