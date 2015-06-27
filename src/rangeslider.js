@@ -693,7 +693,9 @@
         var left = pos - offsetLeft,
             right = pos + offsetRight,
             ObjL = this.rs.left.el_,
-            ObjR = this.rs.right.el_;
+            ObjR = this.rs.right.el_,
+            tpl = this.rs.tpl.el_,
+            tpr = this.rs.tpr.el_;
 
         if (left < 0) {
             left = 0;
@@ -709,6 +711,8 @@
 
         ObjL.style.left = (left * 100) + '%';
         ObjR.style.left = (right * 100) + '%';
+        tpl.children[0].innerHTML = videojs.formatTime(this.rs._seconds(left));
+        tpr.children[0].innerHTML = videojs.formatTime(this.rs._seconds(right));
 
         this.rs.start= this.rs._seconds(left);
         this.rs.end = this.rs._seconds(right);
